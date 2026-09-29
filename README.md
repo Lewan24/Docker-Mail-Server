@@ -31,6 +31,9 @@ To run the copy mails process change:
 into
 + --automap
 ```
+<br><br>
+
+Docker compose contains **Kopia** instance to make backups of archived mails.
 
 ## Useful links:
 [Docker Mail Server](https://github.com/docker-mailserver/docker-mailserver)
@@ -40,3 +43,5 @@ into
 [Imapsync](https://github.com/imapsync/imapsync)
 
 [oauth2_imap](https://imapsync.lamiral.info/oauth2/)
+
+[Kopia](https://kopia.io/)
