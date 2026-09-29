@@ -31,3 +31,12 @@ To run the copy mails process change:
 into
 + --automap
 ```
+
+## Useful links:
+[Docker Mail Server](https://github.com/docker-mailserver/docker-mailserver)
+
+[Roundcube](https://roundcube.net/)
+
+[Imapsync](https://github.com/imapsync/imapsync)
+
+[oauth2_imap](https://imapsync.lamiral.info/oauth2/)
