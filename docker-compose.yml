@@ -57,8 +57,12 @@ services:
         # ls -l /certs/ssl/
         # ls -l /certs/ssl/demoCA/
 
+  # ============================================================
+  # MAILSERVER
+  # ============================================================
+
   mailserver:
-    image: ghcr.io/docker-mailserver/docker-mailserver:latest
+    image: ghcr.io/docker-mailserver/docker-mailserver:16.0.1
     container_name: mailserver
     hostname: mail
     domainname: archiwum.local
@@ -67,15 +71,15 @@ services:
     ports:
       # SMTP
       - "25:25"
-
       # SMTP Submission
       - "587:587"
-
-      # IMAP
+      # IMAPS
       - "993:993"
 
     volumes:
+      # users inbox
       - mail-data:/var/mail
+
       - mail-state:/var/mail-state
       - mail-logs:/var/log/mail
       - mail-config:/tmp/docker-mailserver
@@ -86,20 +90,25 @@ services:
       
       OVERRIDE_HOSTNAME: mail.archiwum.local
       POSTFIX_MYHOSTNAME: mail.archiwum.local
+
       PERMIT_DOCKER: network
-      
+
       SSL_TYPE: self-signed
       ENABLE_IMAP: 1
+
       POSTFIX_MESSAGE_SIZE_LIMIT: 52428800
 
       ENABLE_CLAMAV: 0
       ENABLE_RSPAMD: 0
       ENABLE_SPAMASSASSIN: 0
-
       ENABLE_FAIL2BAN: 0
 
     networks:
       - mailnet
+
+  # ============================================================
+  # ROUNDCUBE
+  # ============================================================
 
   roundcube:
     image: roundcube/roundcubemail:latest
@@ -110,11 +119,12 @@ services:
       - mailserver
 
     ports:
+      # Webmail
       - "31080:80"
 
     environment:
       ROUNDCUBEMAIL_DB_TYPE: sqlite
-      
+
       ROUNDCUBEMAIL_DEFAULT_HOST: ssl://mailserver
       ROUNDCUBEMAIL_DEFAULT_PORT: 993
 
@@ -128,13 +138,63 @@ services:
     volumes:
       - roundcube-db:/var/roundcube/db
       - roundcube-config:/var/roundcube/config
-      # main configuration, if run in local then check code undec compose to bypass tls communication
       - roundcube-main-config:/var/www/html/config
 
     networks:
       - mailnet
 
+  # ============================================================
+  # KOPIA
+  # ============================================================
+
+  kopia:
+    image: kopia/kopia:latest
+    hostname: kopiamails
+    container_name: kopia
+    restart: unless-stopped
+
+    ports:
+      - "51515:51515"
+
+    command:
+      - server
+      - start
+      - --disable-csrf-token-checks
+      - --insecure
+      - --address=0.0.0.0:51515
+      - --server-username=admin
+      - --server-password=change-me-to-secure-password
+
+    environment:
+      KOPIA_PASSWORD: "change-me-to-secure-password"
+      USER: "User"
+
+    volumes:
+      - kopia-config:/app/config
+      - kopia-cache:/app/cache
+      - kopia-logs:/app/logs
+      - kopia-tmp:/tmp:shared
+      # Repository to store backups
+      - kopia-repository:/repository
+      
+      # ========================================================
+      # Data to backup access
+      # ========================================================
+      - mail-data:/data:ro
+      - mail-state:/mail-state:ro
+      - mail-config:/mail-config:ro
+      - roundcube-config:/roundcube-config:ro
+      - roundcube-main-config:/roundcube-main-config:ro
+      - mail-logs:/mail-logs:ro
+
+    networks:
+      - mailnet
+
 volumes:
+  # ------------------------------------------------------------
+  # MAILSERVER
+  # ------------------------------------------------------------
+
   mail-data:
     name: mail-archive-data
   mail-state:
@@ -143,12 +203,32 @@ volumes:
     name: mail-archive-logs
   mail-config:
     name: mail-archive-config
+
+  # ------------------------------------------------------------
+  # ROUNDCUBE
+  # ------------------------------------------------------------
+
   roundcube-db:
     name: mail-archive-roundcube-db
   roundcube-config:
     name: mail-archive-roundcube-config
   roundcube-main-config:
     name: mail-archive-roundcube-main-config
+
+  # ------------------------------------------------------------
+  # KOPIA
+  # ------------------------------------------------------------
+
+  kopia-config:
+    name: mail-archive-kopia-config
+  kopia-cache:
+    name: mail-archive-kopia-cache
+  kopia-logs:
+    name: mail-archive-kopia-logs
+  kopia-tmp:
+    name: mail-archive-kopia-tmp
+  kopia-repository:
+    name: mail-archive-kopia-repository
 
 networks:
   mailnet:
