@@ -1,0 +1,173 @@
+services:
+  # simple generator to prepare ssl certs for local purposes
+  # cert-generator:
+    # image: alpine:3.22
+    # container_name: mail-cert-generator
+    # restart: "no"
+
+    # volumes:
+      # - mail-config:/certs
+
+    # command:
+      # - /bin/sh
+      # - -c
+      # - |
+        # apk add --no-cache openssl
+
+        # mkdir -p /certs/ssl/demoCA
+
+        # openssl req -x509 \
+          # -nodes \
+          # -newkey rsa:4096 \
+          # -days 3650 \
+          # -keyout /certs/ssl/demoCA/cakey.pem \
+          # -out /certs/ssl/demoCA/cacert.pem \
+          # -subj "/C=PL/O=Archiwum/CN=Archiwum Local CA"
+
+        # openssl req \
+          # -nodes \
+          # -newkey rsa:2048 \
+          # -keyout /certs/ssl/mail.archiwum.local-key.pem \
+          # -out /tmp/mail.csr \
+          # -subj "/C=PL/O=Archiwum/CN=mail.archiwum.local"
+
+        # printf '%s\n' \
+          # 'authorityKeyIdentifier=keyid,issuer' \
+          # 'basicConstraints=CA:FALSE' \
+          # 'keyUsage=digitalSignature,keyEncipherment' \
+          # 'extendedKeyUsage=serverAuth' \
+          # 'subjectAltName=DNS:mail.archiwum.local,DNS:archiwum.local' \
+          # > /tmp/extensions.cnf
+
+        # openssl x509 \
+          # -req \
+          # -days 3650 \
+          # -in /tmp/mail.csr \
+          # -CA /certs/ssl/demoCA/cacert.pem \
+          # -CAkey /certs/ssl/demoCA/cakey.pem \
+          # -CAcreateserial \
+          # -out /certs/ssl/mail.archiwum.local-cert.pem \
+          # -extfile /tmp/extensions.cnf
+
+        # chmod 600 /certs/ssl/mail.archiwum.local-key.pem
+        # chmod 644 /certs/ssl/mail.archiwum.local-cert.pem
+        # chmod 644 /certs/ssl/demoCA/cacert.pem
+
+        # echo "CERTIFICATES CREATED:"
+        # ls -l /certs/ssl/
+        # ls -l /certs/ssl/demoCA/
+
+  mailserver:
+    image: ghcr.io/docker-mailserver/docker-mailserver:latest
+    container_name: mailserver
+    hostname: mail
+    domainname: archiwum.local
+    restart: unless-stopped
+
+    ports:
+      # SMTP
+      - "25:25"
+
+      # SMTP Submission
+      - "587:587"
+
+      # IMAP
+      - "993:993"
+
+    volumes:
+      - mail-data:/var/mail
+      - mail-state:/var/mail-state
+      - mail-logs:/var/log/mail
+      - mail-config:/tmp/docker-mailserver
+      - /etc/localtime:/etc/localtime:ro
+
+    environment:
+      TZ: Europe/Warsaw
+      
+      OVERRIDE_HOSTNAME: mail.archiwum.local
+      POSTFIX_MYHOSTNAME: mail.archiwum.local
+      PERMIT_DOCKER: network
+      
+      SSL_TYPE: self-signed
+      ENABLE_IMAP: 1
+      POSTFIX_MESSAGE_SIZE_LIMIT: 52428800
+
+      ENABLE_CLAMAV: 0
+      ENABLE_RSPAMD: 0
+      ENABLE_SPAMASSASSIN: 0
+
+      ENABLE_FAIL2BAN: 0
+
+    networks:
+      - mailnet
+
+  roundcube:
+    image: roundcube/roundcubemail:latest
+    container_name: roundcube
+    restart: unless-stopped
+
+    depends_on:
+      - mailserver
+
+    ports:
+      - "31080:80"
+
+    environment:
+      ROUNDCUBEMAIL_DB_TYPE: sqlite
+      
+      ROUNDCUBEMAIL_DEFAULT_HOST: ssl://mailserver
+      ROUNDCUBEMAIL_DEFAULT_PORT: 993
+
+      ROUNDCUBEMAIL_SMTP_SERVER: tls://mailserver
+      ROUNDCUBEMAIL_SMTP_PORT: 587
+
+      ROUNDCUBEMAIL_SKIN: elastic
+
+      ROUNDCUBEMAIL_DES_KEY: "CHANGE_THIS_TO_A_LONG_RANDOM_SECRET"
+
+    volumes:
+      - roundcube-db:/var/roundcube/db
+      - roundcube-config:/var/roundcube/config
+      # main configuration, if run in local then check code undec compose to bypass tls communication
+      - roundcube-main-config:/var/www/html/config
+
+    networks:
+      - mailnet
+
+volumes:
+  mail-data:
+    name: mail-archive-data
+  mail-state:
+    name: mail-archive-state
+  mail-logs:
+    name: mail-archive-logs
+  mail-config:
+    name: mail-archive-config
+  roundcube-db:
+    name: mail-archive-roundcube-db
+  roundcube-config:
+    name: mail-archive-roundcube-config
+  roundcube-main-config:
+    name: mail-archive-roundcube-main-config
+
+networks:
+  mailnet:
+    name: mail-archive-network
+    driver: bridge
+    
+# php code required to insert into -> mail-archive-roundcube-main-config/config.inc.php
+# $config['imap_conn_options'] = [
+    # 'ssl' => [
+        # 'verify_peer' => false,
+        # 'verify_peer_name' => false,
+        # 'allow_self_signed' => true,
+    # ],
+# ];
+
+# $config['smtp_conn_options'] = [
+    # 'ssl' => [
+        # 'verify_peer' => false,
+        # 'verify_peer_name' => false,
+        # 'allow_self_signed' => true,
+    # ],
+# ];
